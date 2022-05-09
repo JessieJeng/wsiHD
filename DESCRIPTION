@@ -1,0 +1,28 @@
+Package: wsiHD
+Type: Package
+Title: Weak Signal Inference Under High Dimensionality
+Version: 0.1
+Date: 2021-08-05
+Authors@R: c(person("X. Jessie", "Jeng", role = "aut", email = "xjjeng@ncsu.edu"),
+             person("Shannon", "Holloway", role = c("aut", "cre")))
+Description: Implements an analytic framework to regulate false negative errors
+    under measures tailored towards modern applications with high-dimensional
+    data. The method control the false negative proportion (FNP) at a 
+    user-specified level and regulates the amount of unnecessary false 
+    positives to achieve the FNP level.
+License: GPL-2
+Depends: methods
+Suggests: rmarkdown, knitr, MASS
+Imports: stats, bigmemory, ff, ffbase
+VignetteBuilder: utils, knitr
+LinkingTo: Rcpp, RcppArmadillo, bigmemory, BH
+NeedsCompilation: yes
+Repository: CRAN
+Encoding: UTF-8
+RoxygenNote: 7.1.1
+Collate: 'RcppExports.R' 'verifyPvalue.R' 'cSeq.R' 'signalProp.R'
+        'fnpOpt.R' 'print.wsiHD.R' 'wsiData.R'
+Packaged: 2021-08-05 16:56:31 UTC; sthollow
+Author: X. Jessie Jeng [aut],
+  Shannon Holloway [aut, cre]
+Maintainer: Jessie Jeng <xjjeng@ncsu.edu>
