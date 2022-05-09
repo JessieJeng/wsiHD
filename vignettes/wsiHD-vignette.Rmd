@@ -1,0 +1,450 @@
+---
+title: "wsiHD - Weak Signal Inference Under High Dimensionality"
+date: August 5, 2021
+output: 
+  rmarkdown::pdf_document
+vignette: >
+  %\VignetteIndexEntry{wsiHD-vignette}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+opt <- options()
+options(continue="  ", width=70, prompt=" ")
+on.exit(options(opt))
+library(wsiHD, quietly=TRUE)
+library(bigmemory, quietly = TRUE)
+library(ff)
+```
+
+
+\section{Introduction}
+
+\textbf{wtsHD} is an R package that implements an analytic framework to regulate false
+negative errors under measures tailored towards modern applications with
+high-dimensional data. The method controls the false negative proportion (FNP)
+at a user-specified level and regulates the amount of unnecessary false
+positives to achieve the FNP level. The framework comprises three steps, 
+the estimation of the bounding sequences,
+the estimation of the signal proportion, and the estimation of the FNP.
+The implementation of each step is described in the following section.
+An illustrative example based on the dataset provided with the package
+is also provided.
+
+\section{Functions}
+
+\subsection{\textit{cSeq()}}
+
+This function estimates the bounding sequences using the empirical distributions
+
+$$
+V_{0.5,a} = \max_{1 \le j \le p} 
+\frac{|j/p - \overline{\Phi}(w_{(j)})|}
+{\sqrt{\overline{\Phi}(w_{(j)})} }
+~~~~~~ \mathrm{and} ~~~~~~
+V_{1,a} = \max_{1 \le j \le p} 
+\frac{|j/p - \overline{\Phi}(w_{(j)})|}
+{{\overline{\Phi}(w_{(j)})} },
+$$
+where $p$ is the total number of variables (signal + noise), 
+$\overline{\Phi}(t) = 1 - \Phi(t)$, $\Phi(t)$ is the cumulative distribution 
+function, and $w_{(j)}, j=1,\dots,p$ are statistics generated under the null 
+distribution. The bounding sequences $c_{\alpha,0.5}$ and $c_{\alpha,1}$ are 
+taken as the $(1-\alpha)$-th quantiles of $V_{0.5,a}$ and $V_{1,a}$, 
+respectively.
+
+\vspace{.15in}
+
+The function call takes the following form:
+```{r eval=FALSE}
+cSeq(pval_null, alpha = 0.1)
+```
+where input \texttt{pval\_null} is a $\{p \times n\}$ maxtrix-\textit{like} object 
+containing $n$ sets of $p$ p-values obtained from samples of the null distribution and 
+\texttt{alpha} is a numeric object in $(0,1]$ specifying the quantile with default value $\alpha = 0.1$.
+
+\vspace{.15in}
+
+Note that each set of samples is provided as a column vector; 
+typically $p \gg n$.
+
+\vspace{.15in}
+
+The function is an S4 method with implementations defined for the following 
+signatures:
+\begin{itemize}
+\item{\texttt{pval\_null} = "\texttt{matrix}"} 
+
+  Input \texttt{pval\_null} is a standard R "\texttt{numeric matrix}," and only methods defined in 
+  base R and the \textbf{stats} package are used to obtain estimates;
+\item{\texttt{pval\_null} = "\texttt{big.matrix}"} 
+
+  Input \texttt{pval\_null} 
+  is an object of class "\texttt{big.matrix}" as defined by package 
+  \textbf{bigmemory}, and \textbf{RcppArmadillo} methods are used to obtain estimates; and
+\item{\texttt{pval\_null} = "\texttt{ff\_matrix}"} 
+
+  Input \texttt{pval\_null} is 
+  an object of class "\texttt{ff\_matrix}" as defined by package \textbf{ff}, and 
+  methods defined in packages \textbf{ff} and \textbf{ffbase} are used to obtain 
+  estimates.
+\end{itemize}
+
+The \textbf{bigmemory} and \textbf{ff} packages offer file-based access to 
+data, which can accommodate larger matrices. Though highly optimized, these 
+methods can have longer run times.
+
+\subsection{\textit{signalProp()}}
+
+This function estimates the signal proportion as follows. First, the 
+estimators using each bounding sequence are calculated as
+
+$$
+\hat{\pi}_{0.5} = \max_{1 \le j \le p} 
+\frac{j/p - \overline{\Phi}(z_{(j)}) - c_{\alpha,0.5} \sqrt{\overline{\Phi}(z_{(j)})}}
+{1-{\overline{\Phi}(z_{(j)})} }
+~~~~~~ \mathrm{and} ~~~~~~
+\hat{\pi}_{1} = \max_{1 \le j \le p} 
+\frac{j/p - \overline{\Phi}(z_{(j)}) - c_{\alpha,1} {\overline{\Phi}(z_{(j)})}}
+{1-{\overline{\Phi}(z_{(j)})} }
+$$
+where $z_{(j)}$ are the test statistics and $c_{\alpha, 0.5}$ and 
+$c_{\alpha, 1}$ are the estimated bounding sequences defined previously. 
+The estimated signal proportion is taken as 
+$\hat{\pi} = \max\{\hat{\pi}_{0.5}, \hat{\pi}_{1}\}$.
+
+\vspace{.15in}
+
+This estimator is implemented through function \textit{signalProp()} and 
+can be called to estimate the signal proportions given estimators 
+ for the bounding sequences
+```{r eval=FALSE}
+signalProb(pval, ..., c05, c1)
+```
+or to estimate both the bounding 
+sequences and the signal proportions
+```{r eval=FALSE}
+signalProb(pval, pval_null, ..., alpha = 0.1)
+```
+where input \texttt{pval} is a vector-\textit{like} object of p-values.
+Inputs \texttt{c05} and \texttt{c1} are the estimated bounding sequences 
+$c_{\alpha,0.5}$ and $c_{\alpha,1}$, respectively.  Inputs
+\texttt{pval\_null} and $\alpha$ are as defined for \textit{cSeq()}.
+
+\vspace{.15in}
+
+Recall that formal arguments after an ellipsis ($\dots$) must be provided as 
+named inputs.
+
+\vspace{.15in}
+
+The function is an S4 method with implementations as follows:
+
+If estimated bounding sequences are provided as numeric objects through 
+named inputs \texttt{c05} and \texttt{c1}, and
+input \texttt{pval\_null} is either not provided ("missing") or is set to NULL,  
+the following S4 signatures are defined
+\begin{itemize}
+\item{\texttt{pval} = "\texttt{numeric}"} 
+
+  If input \texttt{pval} is a standard R "\texttt{numeric vector}," only methods defined 
+  in base R and the \textbf{stats} package are used to obtain estimates.
+\item{\texttt{pval} = "\texttt{big.matrix}"} 
+
+  If input \texttt{pval} is an object 
+  of class "\texttt{big.matrix}" as defined by package \textbf{bigmemory} with 
+  a single row or a single column, \textbf{RcppArmadillo} methods are used to obtain 
+  estimates.
+\item{\texttt{pval} = "\texttt{ff\_vector}"} 
+
+  If input \texttt{pval} is an object 
+  of class "\texttt{ff\_vector}" as defined by package \textbf{ff}, methods 
+  defined in packages \textbf{ff} and \textbf{ffbase} are used to obtain 
+  estimates.
+\end{itemize}
+
+\vspace{.15in}
+
+The second input configuration is equivalent to calling 
+\texttt{cSeq(pval\_null, alpha)} and 
+\texttt{signalProp(pval, c05, c1)} 
+sequentially. Thus, the signatures defined for \texttt{pval\_null} for 
+\textit{cSeq()} in the preceding subsection and those for \texttt{pval} above 
+apply. Note that the class of the objects used for \texttt{pval} and 
+\texttt{pval\_null} do not have to be related, e.g. 
+\texttt{pval} = "\texttt{numeric}" and \texttt{pval\_null} = "\texttt{big.matrix}" 
+is an accepted combination. 
+
+\vspace{.15in}
+
+Further there are signatures that we do not explicitly mention here that 
+have been included to accommodate vector-\textit{like} classes. For example, if 
+\texttt{pval} = "\texttt{matrix}" with a single column or a single row, 
+methods have been implemented to identify these cases and process the input 
+data into vector form. Similarly for objects of class "\texttt{ff\_array}."
+
+\subsection{\textit{fnpOpt()}}
+
+The \textit{fnpOpt()} function estimates
+
+$$
+\widehat{FNP}(z_{(j)}) = \max\{ 1-j/\hat{s} + 
+(p-\hat{s}) \overline{\Phi}(z_{(j)})/\hat{s}, 0\},
+$$
+where $z_{(j)}, j=1, \dots, p,$ are the test statistics, $\hat{s} = \lceil p*\hat{\pi} \rceil$, and 
+$\hat{\pi}$ is the estimated signal proportion defined previously.
+
+\vspace{.15in}
+
+This functions can be called to estimate the FNP given an estimated number of signals
+```{r eval=FALSE}
+fnpOpt(pval, ..., beta, sHat)
+```
+or to perform all three steps of the framework, i.e., estimate the bounding sequence, 
+signal proportion, and FNP
+```{r eval=FALSE}
+fnpOpt(pval, pval_null, ..., beta, alpha = 0.1)
+```
+where input \texttt{pval} is a vector-\textit{like} object of p-values and
+\texttt{beta} is the tolerance threshold. Input \texttt{sHat} is the estimated 
+number of signal variables. Inputs \texttt{pval\_null} and 
+\texttt{alpha} are as defined for \textit{cSeq()}.
+
+\vspace{.15in}
+
+Again we mention that formal arguments after an ellipsis ($\dots$) must be 
+provided as named inputs.
+
+\vspace{.15in}
+
+Similar to the description given for \textit{signalProb()}, this function is 
+an S4 method with implementations as follows:
+
+If \texttt{sHat} and \texttt{beta} are provided, and input \texttt{pval\_null} is either not provided ("missing") or is set to NULL,  the following S4 signatures are defined
+\begin{itemize}
+\item{\texttt{pval} = "\texttt{numeric}"} 
+
+  If \texttt{pval} is a standard R "\texttt{numeric vector}," only methods defined 
+  in base R and the \textbf{stats} package are used to obtain the estimates.
+\item{\texttt{pval} = "\texttt{big.matrix}"} 
+
+  If \texttt{pval} is an object of class "\texttt{big.matrix}" as defined by package \textbf{bigmemory} with a 
+  single row or a single column, \textbf{RcppArmadillo} methods are used to obtain the estimates.
+\item{\texttt{pval} = "\texttt{ff\_vector}"} 
+
+  If \texttt{pval} is an object of  class "\texttt{ff\_vector}" as defined by package \textbf{ff}, methods 
+  defined in packages \textbf{ff} and \textbf{ffbase} are used to obtain the estimates.
+\end{itemize}
+
+\vspace{.15in}
+
+The full framework call structure simply uses the inputs to call
+\texttt{cSeq(pval\_null, alpha)}, 
+\texttt{signalProp(pval, c05, c1)}, and 
+\texttt{fnpOpt(pval, beta, sHat)}
+sequentially. Thus, the signatures previously discussed for these functions apply. 
+
+\vspace{.15in}
+
+As for \textit{signalProb()} there are signatures that we do not explicitly 
+mention here that have been included to accommodate vector-\textit{like} classes. 
+
+\subsection{ \textit{print()} }
+
+A convenience function to provide results in a tidy format.
+
+\section{Examples}
+
+\subsection{Data}
+
+We use the dataset provided with the package, wsiData, to illustrate a
+typical analysis. This dataset is a publicly available high-throughput 
+genomic dataset (Buhlmann et al. (2014)) providing
+gene expression levels and the rate of riboflavin production with \textit{Bacillus subtilis}
+for 71 individuals.
+The data comprises 4088 gene expression levels and the logarithm of the 
+riboflavin production rate ($q_RRIBFLC).
+
+\vspace{.15in}
+
+The data can be loaded in the usual way
+```{r}
+data(wsiData)
+```
+
+```{r}
+dim(wsiData)
+```
+
+\vspace{.15in}
+
+Consider the summary statistics of only the outcome
+```{r}
+summary(wsiData$q_RIBFLC)
+```
+We see that the range of the logarithm of the riboflavin production rate, $y$, is 
+`r round(range(wsiData$q_RIBFLC)[1],digits=4L)` $\le y \le$ 
+`r round(range(wsiData$q_RIBFLC)[2],digits=4L)`. The range of the gene expression levels, $\ell$, is
+`r round(range(c(data.matrix(wsiData[,2:4089])))[1],digits=4L)` $\le \ell \le$ 
+`r round(range(c(data.matrix(wsiData[,2:4089])))[2],digits=4L)`.
+
+```{r}
+summary(c(data.matrix(wsiData[,-1L])))
+```
+
+\subsection{P-values}
+
+We first obtain the test statistics using marginal regression
+```{r}
+dm <- data.matrix(frame = wsiData)
+pval <- apply(X = dm[,-1L], 
+              MARGIN = 2L, 
+              FUN = function(x,y) {
+                summary(object = lm(formula = y~x))$coef[2L,4L]
+              }, 
+              y = dm[,1L])
+p <- length(x = pval)
+```
+
+Next, we obtain 1000 sets of samples from the null distribution and their corresponding p-values
+```{r}
+n <- 1000L
+sig <- stats::cor(x = dm[,-1L])
+zz <- MASS::mvrnorm(n = n, mu = rep(x = 0.0, times = p), Sigma = sig)
+pval_null <- t(x = {1.0 - stats::pnorm(q = abs(x = zz))}*2.0)
+```
+where we have transposed the p-value matrix to put it into the expected input format.
+
+\vspace{.15in}
+
+Though our data is not of sufficient dimension to warrant the use of more 
+memory efficient storage and access, we will define variables of class 
+"\texttt{big.matrix}" and "\texttt{ff\_matrix}" for illustration purposes.
+
+```{r}
+pval_nullBM <- as.big.matrix(pval_null, type = "double")
+pval_nullFF <- ff(vmode = "double", dim = c(p,n), pval_null)
+```
+
+\subsection{ \textit{cSeq()} }
+
+The first step of the framework is to estimate the bounding sequences. We will 
+set $\alpha = 0.2$.
+
+Using the standard R "\texttt{matrix}" object, the call takes the form
+```{r}
+cs <- cSeq(pval_null = pval_null, alpha = 0.2)
+```
+A message is generated indicating the number of samples ($n$) and variables ($p$). An S3 object of class "\texttt{wsiHD}" comprising a list object is returned with element \$c05 and \$c1.
+```{r}
+cs
+```
+
+\vspace{.15in}
+
+For the "\texttt{big.matrix}" and "\texttt{ff\_matrix}" objects,
+```{r}
+cSeq(pval_null = pval_nullBM, alpha = 0.2)
+cSeq(pval_null = pval_nullFF, alpha = 0.2)
+```
+yield similar return objects. Notice, however, that the estimates are not 
+identical. Any differences are due to the algorithm used to obtain the 
+$(1-\alpha)$-th quantile. In base R, there are nine algorithms available to 
+obtain quantiles. We have opted to use the default algorithm in this 
+implementation. However, this default algorithm is not the same as that 
+implemented by Armadillo (the underpinnings for the "\texttt{big.matrix}"
+implementation), which uses type = 5, nor that of \textbf{ff}, which uses type = 1.
+Thus, estimates of the bounding 
+sequences might differ slightly for inputs of different classes but with 
+equivalent p-values. For large p, any differences will be very small.
+
+\subsection{ \textit{signalProp()} }
+
+The second step of the framework is to use the estimated bounding sequences to 
+obtain the estimated signal proportion. 
+```{r}
+piHat <- signalProp(pval = pval, c05 = cs$c05, c1 = cs$c1)
+```
+An S3 object of class "\texttt{wsiHD}" comprising a list object is returned containing $\hat{\pi}$ (\$piHat), 
+$\hat{\pi}_{0.5}$ (\$piHat05), and $\hat{\pi}_{1}$ (\$piHat1).
+
+```{r}
+piHat
+```
+
+
+\vspace{.15in}
+
+These results can be equivalently obtained using a slightly different input 
+structure. Namely,
+```{r}
+signalProp(pval = pval, pval_null = pval_null, alpha = 0.2)
+```
+
+Here we see that the bounding sequences were estimated internally and are 
+returned through the value object.
+
+
+\vspace{.15in}
+
+Again, we see that using the alternative input classes leads to slightly 
+different results due to the underlying quantile algorithms.
+```{r}
+signalProp(pval = pval, pval_null = pval_nullBM, alpha = 0.2)
+signalProp(pval = pval, pval_null = pval_nullFF, alpha = 0.2)
+```
+
+\subsection{ \textit{fnpOpt()} }
+The final step of the framework is to use the estimated signal proportion to 
+obtain the estimated number of signal variables and then estimate the FNP. 
+We will take $\beta = 0.1$ in this example.
+```{r}
+sHat <- ceiling(x = p*piHat$piHat)
+fnp <- fnpOpt(pval = pval, beta = 0.1, sHat = sHat)
+```
+An S3 object of class "\texttt{wsiHD}" comprising a list object is returned containing \$ind, the rank satisfying the 
+threshold condition; \$pvalue, the maximum p-value for the variables
+that satisfy the threshold condition; and \$FNP, the estimated FNP for all 
+variables. Note that the class of the \$FNP element will depend on the
+class input \texttt{pval}.
+
+```{r}
+fnp
+```
+
+Though the full $p$-dimensional vector of $\widehat{FNP}$ is returned,
+the print function only displays the summary statistics.
+
+\vspace{.15in}
+
+Similar in spirit to the \textit{signalProp()} function, these results can be 
+equivalently obtained using a slightly different input structure. Namely,
+```{r}
+fnpOpt(pval = pval, pval_null = pval_null, beta = 0.1, alpha = 0.2)
+```
+
+Here we see that the bounding sequences were estimated internally as well as 
+the estimated signal proportions. These are returned through the value object.
+
+\vspace{.15in}
+
+And using the alternative input classes
+```{r}
+fnpOpt(pval = pval, pval_null = pval_nullBM, beta = 0.1, alpha = 0.2)
+fnpOpt(pval = pval, pval_null = pval_nullFF, beta = 0.1, alpha = 0.2)
+```
+
+\section{References}
+
+Jeng, X. J. and Hu, Y. (2021).
+Weak signal inference under dependence and sparsity, submitted.
+
+Jeng, X. J. (2021). 
+Estimating the proportion of signal variables under arbitrary
+covariance dependence. <arXiv:2102.09053>.
+
+Buhlmann, P., Kalisch, M. and Meier, L. (2014).
+High-Dimensional statistics with a view toward applications in Biology.
+\textit{Annual Review of Statistics and Its Application}, 1, 255--278.
